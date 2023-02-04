@@ -1,0 +1,14 @@
+[package]
+name = "robit"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nalgebra = "0.32.1"
+num-traits = "0.2.15"
+rand = "0.8.5"
+rand_distr = "0.4.3"
+rust_decimal = { version = "1.28.0", features = ["maths"] }
+rust_decimal_macros = "1.28.0"
