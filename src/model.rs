@@ -1,4 +1,4 @@
-use std::{fmt::Debug};
+use std::fmt::Debug;
 
 use crate::{
     layers::{Input, Layer, Pipe},
@@ -22,7 +22,7 @@ impl<const M: usize, O, L, T> Model<M, M, O, L, T>
 where
     O: Optimizer + Default,
     L: Loss<T> + Default,
-    T: 'static,
+    T: Copy + 'static,
 {
     pub fn new() -> Self {
         Self {
@@ -51,33 +51,33 @@ where
     ///     .add_layer(Dense::<3, 4>::new());
     /// ```
     pub fn add_layer<const U: usize, V: Layer<N, U, T> + 'static>(
-        self,
-        layer: V,
+        mut self,
+        mut layer: V,
     ) -> Model<M, U, O, L, T> {
-        self.weights.append(layer.weights());
+        self.weights.append(&mut layer.gen_weights());
+        self.biases.append(&mut layer.gen_biases());
 
         Model {
             weights: self.weights,
             biases: self.biases,
             layers: Box::new(Pipe::new(self.layers.into(), Box::new(layer))),
             optimizer: self.optimizer,
-            loss: self.loss
+            loss: self.loss,
         }
     }
 
-    pub fn predict(&self, input: [T; M]) -> [T; N] {
-        self.layers.forward(input)
+    pub fn predict(&self, input: &[T; M]) -> [T; N] {
+        self.layers.predict(&self.weights, &self.biases, &input)
     }
 
     pub fn train(&mut self, training_data: Vec<([T; M], [T; N])>) {
         for epoch in 0..5 {
-            let weights = self.layers.weights_mut();
 
-            self.optimizer.train(weights, training_data);
-            
+            // self.optimizer.train(weights, training_data);
+
             // let biases = self.layers.biases_mut();
 
-            println!("{:?}", weights);
+            // println!("{:?}", weights);
 
             // self.optimizer.train(training_data);
         }

@@ -1,4 +1,7 @@
-use std::{ops::{Div, Sub, Mul}, iter::Sum};
+use std::{
+    iter::Sum,
+    ops::{Div, Mul, Sub},
+};
 
 use num_traits::{One, Pow};
 
@@ -8,7 +11,14 @@ pub struct MeanSquaredError;
 
 impl<T> Loss<T> for MeanSquaredError
 where
-    T: One + Copy + Div<Output = T> + Mul<T> + Pow<f64, Output = T> + From<u32> + Sub<Output = T> + Sum
+    T: One
+        + Copy
+        + Div<Output = T>
+        + Mul<T>
+        + Pow<f64, Output = T>
+        + From<u32>
+        + Sub<Output = T>
+        + Sum,
 {
     #[inline]
     fn get<const M: usize>(&self, y_true: [T; M], y_pred: [T; M]) -> T {

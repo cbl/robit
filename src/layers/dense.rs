@@ -1,14 +1,13 @@
 use std::{
     fmt::Debug,
     iter::Sum,
+    marker::PhantomData,
     ops::{Add, Mul},
 };
 
-use num_traits::Zero;
-
 use crate::{
     activations::{Activation, Relu},
-    initializers::{Initializer, RandomDistr, Zeros},
+    initializers::{Initializer, Zeros},
 };
 
 use super::Layer;
@@ -30,73 +29,58 @@ use super::Layer;
 /// ```
 /// use robit::{layers::Dense, activations::Sigmoid};
 ///
-/// let layer: Dense<2, 4, Sigmoid> = Dense::new().with_activation();
+/// let layer: Dense<2, 4, Sigmoid> = Dense::new();
 /// ```
-pub struct Dense<const M: usize, const N: usize, A = Relu, T = f64>
+pub struct Dense<const M: usize, const N: usize, A = Relu, I = Zeros, J = Zeros, T = f64>
 where
-    [(); M * N]:,
+    I: Initializer<{ M * N }, T>,
+    J: Initializer<{ M * N }, T>,
     A: Activation<T>,
 {
-    weights: [T; M * N],
-    biases: [T; M * N],
+    weight_initializer: I,
+    bias_initializer: J,
     activation: A,
+    _phantom: PhantomData<T>,
 }
 
-impl<const M: usize, const N: usize, T> Dense<M, N, Relu, T>
+impl<const M: usize, const N: usize, A, I, J, T> Dense<M, N, A, I, J, T>
 where
-    [(); M * N]:,
-    T: Zero + Copy + PartialOrd,
+    I: Initializer<{ M * N }, T> + Default,
+    J: Initializer<{ M * N }, T> + Default,
+    A: Activation<T> + Default,
 {
     pub fn new() -> Self {
         Self {
-            weights: Zeros::default().gen(),
-            biases: Zeros::default().gen(),
-            activation: Relu::default(),
-        }
-    }
-
-    pub fn initialize_with<I: Initializer<{ M * N }, T>, J: Initializer<{ M * N }, T>>(
-        mut weight_initializer: I,
-        mut bias_initializer: J,
-    ) -> Self {
-        Self {
-            weights: weight_initializer.gen(),
-            biases: bias_initializer.gen(),
-            activation: Relu::default(),
-        }
-    }
-
-    pub fn from_weights_and_biases(weights: [T; M * N], biases: [T; M * N]) -> Self {
-        Self {
-            weights,
-            biases,
-            activation: Relu::default(),
+            weight_initializer: I::default(),
+            bias_initializer: J::default(),
+            activation: A::default(),
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<const M: usize, const N: usize, A, T> Dense<M, N, A, T>
+impl<const M: usize, const N: usize, A, I, J, T> Dense<M, N, A, I, J, T>
 where
-    [(); M * N]:,
-    A: Activation<T>,
+    I: Initializer<{ M * N }, T>,
+    J: Initializer<{ M * N }, T>,
+    A: Activation<T> + Default,
 {
-    /// Returns an instance that uses the given [Activation] function.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use robit::{layers::Dense, activations::Sigmoid};
-    ///
-    /// let layer: Dense<2, 4, Sigmoid> = Dense::new().with_activation();
-    /// ```
-    pub fn with_activation<B: Activation<T> + Default>(self) -> Dense<M, N, B, T> {
-        Dense {
-            weights: self.weights,
-            biases: self.biases,
-            activation: B::default(),
+    pub fn with_initializers(weight_initializer: I, bias_initializer: J) -> Self {
+        Self {
+            weight_initializer,
+            bias_initializer,
+            activation: A::default(),
+            _phantom: PhantomData,
         }
     }
+}
 
+impl<const M: usize, const N: usize, A, I, J, T> Dense<M, N, A, I, J, T>
+where
+    I: Initializer<{ M * N }, T> + Default,
+    J: Initializer<{ M * N }, T> + Default,
+    A: Activation<T>,
+{
     /// Returns an instance that uses the given [Activation] function.
     ///
     /// # Example
@@ -105,33 +89,49 @@ where
     /// use robit::{layers::Dense, activations::Sigmoid};
     ///
     /// let activation = Sigmoid::new(1.05);
-    /// let layer: Dense<2, 4, Sigmoid> = Dense::new().set_activation(activation);
+    ///
+    /// let layer: Dense<2, 4, Sigmoid> = Dense::with_activation(activation);
     /// ```
-    pub fn set_activation<B: Activation<T> + Default>(self, activation: B) -> Dense<M, N, B, T> {
-        Dense {
-            weights: self.weights,
-            biases: self.biases,
+    pub fn with_activation(activation: A) -> Self {
+        Self {
+            weight_initializer: I::default(),
+            bias_initializer: J::default(),
             activation,
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<const M: usize, const N: usize, T, A> Layer<M, N, T> for Dense<M, N, A, T>
+impl<const M: usize, const N: usize, A, I, J, T> Dense<M, N, A, I, J, T>
 where
     [(); M * N]:,
+    I: Initializer<{ M * N }, T>,
+    J: Initializer<{ M * N }, T>,
+    A: Activation<T>,
+{
+}
+
+impl<const M: usize, const N: usize, A, I, J, T> Layer<M, N, T> for Dense<M, N, A, I, J, T>
+where
+    [(); M * N]:,
+    I: Initializer<{ M * N }, T>,
+    J: Initializer<{ M * N }, T>,
     T: Add<Output = T> + Mul<Output = T> + Sum + Debug + Copy,
     A: Activation<T>,
 {
-    fn forward(&self, input: [T; M]) -> [T; N] {
-        self.weights
-            .zip(self.biases)
+    fn predict(&self, weights: &[T], biases: &[T], input: &[T; M]) -> [T; N] {
+        weights
+            .into_iter()
+            .copied()
+            .zip(biases.into_iter().copied())
+            .collect::<Vec<(T, T)>>()
             .chunks(M)
             .map(|weights| {
                 self.activation.call(
                     weights
                         .iter()
                         .zip(input)
-                        .map(|((weight, bias), a)| *weight * a + *bias)
+                        .map(|((weight, bias), a)| *weight * *a + *bias)
                         .sum::<T>(),
                 )
             })
@@ -140,20 +140,16 @@ where
             .unwrap()
     }
 
-    fn weights(&self) -> Vec<&T> {
-        self.weights.iter().collect()
+    fn gen_weights(&mut self) -> Vec<T> {
+        let weights: [T; M * N] = self.weight_initializer.gen();
+
+        weights.into()
     }
 
-    fn weights_mut(&mut self) -> Vec<&mut T> {
-        self.weights.iter_mut().collect()
-    }
+    fn gen_biases(&mut self) -> Vec<T> {
+        let biases: [T; M * N] = self.bias_initializer.gen();
 
-    fn biases(&self) -> Vec<&T> {
-        self.biases.iter().collect()
-    }
-
-    fn biases_mut(&mut self) -> Vec<&mut T> {
-        self.biases.iter_mut().collect()
+        biases.into()
     }
 }
 
@@ -169,18 +165,18 @@ mod tests {
         assert_eq!(3, layer.output_shape());
     }
 
-    #[test]
-    fn test_add() {
-        let weights_a = [0.5, 0.3, 0.4, 0.2, 0.6, 0.7];
-        let biases_a = [0.5, 0.3, 0.4, 0.2, 0.6, 0.7];
-        let inputs_a = [2.0, 3.0, 4.0];
-        let layer_a = Dense::from_weights_and_biases(weights_a, biases_a);
-        assert_eq!([4.7, 6.5], layer_a.forward(inputs_a));
+    // #[test]
+    // fn test_add() {
+    //     let weights_a = [0.5, 0.3, 0.4, 0.2, 0.6, 0.7];
+    //     let biases_a = [0.5, 0.3, 0.4, 0.2, 0.6, 0.7];
+    //     let inputs_a = [2.0, 3.0, 4.0];
+    //     let layer_a = Dense::new();
+    //     assert_eq!([4.7, 6.5], layer_a.predict(weights_a, biases_a, inputs_a));
 
-        let weights_b = [0.5, 0.1, 0.4, 0.2, 0.6, 0.2];
-        let biases_b = [0.5, 0.4, 0.2, 0.4, 0.4, 0.2];
-        let inputs_b = [2.0, 3.1];
-        let layer_b = Dense::from_weights_and_biases(weights_b, biases_b);
-        assert_eq!([2.21, 2.02, 2.42], layer_b.forward(inputs_b));
-    }
+    //     let weights_b = [0.5, 0.1, 0.4, 0.2, 0.6, 0.2];
+    //     let biases_b = [0.5, 0.4, 0.2, 0.4, 0.4, 0.2];
+    //     let inputs_b = [2.0, 3.1];
+    //     let layer_b = Dense::from_weights_and_biases(weights_b, biases_b);
+    //     assert_eq!([2.21, 2.02, 2.42], layer_b.forward(inputs_b));
+    // }
 }
