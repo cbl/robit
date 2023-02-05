@@ -8,7 +8,7 @@ use num_traits::Zero;
 
 use crate::{
     activations::{Activation, Relu},
-    initializers::{Initializer, Zeros},
+    initializers::{Initializer, RandomDistr, Zeros},
 };
 
 use super::Layer;
@@ -138,6 +138,22 @@ where
             .collect::<Vec<T>>()
             .try_into()
             .unwrap()
+    }
+
+    fn weights(&self) -> Vec<&T> {
+        self.weights.iter().collect()
+    }
+
+    fn weights_mut(&mut self) -> Vec<&mut T> {
+        self.weights.iter_mut().collect()
+    }
+
+    fn biases(&self) -> Vec<&T> {
+        self.biases.iter().collect()
+    }
+
+    fn biases_mut(&mut self) -> Vec<&mut T> {
+        self.biases.iter_mut().collect()
     }
 }
 

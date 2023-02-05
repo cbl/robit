@@ -22,6 +22,22 @@ impl<const M: usize, T> Layer<M, M, T> for Input<M, T> {
     fn forward(&self, input: [T; M]) -> [T; M] {
         input
     }
+
+    fn weights(&self) -> Vec<&T> {
+        vec![]
+    }
+
+    fn weights_mut(&mut self) -> Vec<&mut T> {
+        vec![]
+    }
+
+    fn biases(&self) -> Vec<&T> {
+        vec![]
+    }
+
+    fn biases_mut(&mut self) -> Vec<&mut T> {
+        vec![]
+    }
 }
 
 impl<const M: usize, T> Input<M, T> {

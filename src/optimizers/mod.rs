@@ -1,159 +1,140 @@
-use std::marker::PhantomData;
+mod sgd;
 
-use nalgebra::DVector;
-use rand::{seq::SliceRandom, thread_rng, Rng};
-use rust_decimal::Decimal;
+pub use sgd::SGD;
 
-use crate::losses::Loss;
+use crate::Model;
 
 pub trait Optimizer {
-    fn run<T, const N: usize>(&mut self, training_data: [T; N], test_data: Option<DVector<T>>);
-
-    fn minimize<T, U, L: Loss<T, U>>(&mut self, training_data: DVector<Decimal>, loss: L) {
-        // self.apply_gradients(
-        //     self.compute_gradients(loss, var_list, tape)
-        // );
-    }
-
-    /// Compute gradients of loss on trainable variables.
-    fn compute_gradients(&mut self) {}
-
-    fn apply_gradients(&mut self) {}
+    fn train<const M: usize, const N: usize, T>(&self, training_data: Vec<([T; M], [T; N])>);
 }
 
-pub trait OptIter {
-    type Iter: Iterator;
+// pub struct SGD<R, T> {
+//     learning_rate: f64,
+//     mini_batch_size: usize,
+//     rng: R,
+//     _phantom: PhantomData<T>,
+// }
 
-    fn into_iter(self) -> Self::Iter;
-}
+// impl<R, T> SGD<R, T> {
+//     pub fn new(rng: R, learning_rate: f64, mini_batch_size: usize) -> Self {
+//         Self {
+//             learning_rate,
+//             mini_batch_size,
+//             rng,
+//             _phantom: PhantomData,
+//         }
+//     }
+// }
 
-pub struct SGD<R, T> {
-    learning_rate: f64,
-    mini_batch_size: usize,
-    rng: R,
-    _phantom: PhantomData<T>,
-}
+// impl<R, T, const N: usize> OptIter for SGD<R, T, N> {
+//     type Iter = SGDIterator<R, T, N>;
 
-impl<R, T> SGD<R, T> {
-    pub fn new(rng: R, learning_rate: f64, mini_batch_size: usize) -> Self {
-        Self {
-            learning_rate,
-            mini_batch_size,
-            rng,
-            _phantom: PhantomData,
-        }
-    }
-}
+//     fn into_iter(self, training_data: [T; N]) -> SGDIterator<R, T, N> {
+//         SGDIterator::new(self.learning_rate, self.rng, training_data)
+//     }
+// }
 
-impl<R, T, const N: usize> OptIter for SGD<R, T, N> {
-    type Iter = SGDIterator<R, T, N>;
+// pub struct SGDIterator<R, T, const N: usize> {
+//     rng: R,
+//     training_data: [T; N],
+//     epoch: usize,
+//     learning_rate: f64,
+//     mini_batch_size: usize,
+// }
 
-    fn into_iter(self, training_data: [T; N]) -> SGDIterator<R, T, N> {
-        SGDIterator::new(self.learning_rate, self.rng, training_data)
-    }
-}
+// impl<R: Rng, T, const N: usize> SGDIterator<R, T, N> {
+//     pub fn new(rng: R, training_data: [T; N], learning_rate: f64, mini_batch_size: usize) -> Self {
+//         Self {
+//             training_data,
+//             rng,
+//             learning_rate,
+//             mini_batch_size,
+//             epoch: 0,
+//         }
+//     }
 
-pub struct SGDIterator<R, T, const N: usize> {
-    rng: R,
-    training_data: [T; N],
-    epoch: usize,
-    learning_rate: f64,
-    mini_batch_size: usize,
-}
+//     fn update_mini_batch(&mut self, mini_batch: &[T]) {
+//         let nabla_b = [0; 10];
+//         let nabla_w = [0; 10];
 
-impl<R: Rng, T, const N: usize> SGDIterator<R, T, N> {
-    pub fn new(rng: R, training_data: [T; N], learning_rate: f64, mini_batch_size: usize) -> Self {
-        Self {
-            training_data,
-            rng,
-            learning_rate,
-            mini_batch_size,
-            epoch: 0,
-        }
-    }
+//         for t in mini_batch {
+//             let (delta_nabla_b, delta_nabla_w) = self.backprop(t);
+//         }
+//     }
 
-    fn update_mini_batch(&mut self, mini_batch: &[T]) {
-        let nabla_b = [0; 10];
-        let nabla_w = [0; 10];
-        
-        for t in mini_batch {
-            let (delta_nabla_b, delta_nabla_w) = self.backprop(t);
-        }
-    }
+//     fn backprop(&mut self, training_data: &T) {
+//         let biases = [0; 10];
+//         let weights = [0; 10];
 
-    fn backprop(&mut self, training_data: &T) {
-        let biases = [0; 10];
-        let weights = [0; 10];
+//         let nabla_b = [0; 10];
+//         let nabla_w = [0; 10];
 
-        let nabla_b = [0; 10];
-        let nabla_w = [0; 10];
+//         let activation = training_data;
+//         let activations = [training_data];
+//         let mut zs = [0; N];
 
-        let activation = training_data;
-        let activations = [training_data];
-        let mut zs = [0; N];
+//         let activations = biases
+//             .zip(weights)
+//             .map(|(bias, weights)| {
+//                 let z = weights * activation + bias;
+//                 zs.push(z);
+//                 z
+//             })
+//             .map(|z| z) // activation e.g.: sigmoid(z)
+//             .collect();
 
-        let activations = biases
-            .zip(weights)
-            .map(|(bias, weights)| {
-                let z = weights * activation + bias;
-                zs.push(z);
-                z
-            })
-            .map(|z| z)// activation e.g.: sigmoid(z)
-            .collect();
+//         let delta = self.cost_deriviative(activations, y);
+//     }
+// }
 
-        let delta = self.cost_deriviative(activations, y);
-    }
-}
+// impl<R: Rng, T, const N: usize> Iterator for SGDIterator<R, T, N> {
+//     type Item = ();
 
-impl<R: Rng, T, const N: usize> Iterator for SGDIterator<R, T, N> {
-    type Item = ();
+//     fn next(&mut self) -> Option<()> {
+//         self.epoch += 1;
 
-    fn next(&mut self) -> Option<()> {
-        self.epoch += 1;
+//         self.training_data.shuffle(&mut self.rng);
 
-        self.training_data.shuffle(&mut self.rng);
+//         for mini_batch in self.training_data.chunks(self.mini_batch_size) {
+//             self.update_mini_batch(mini_batch);
+//         }
 
-        for mini_batch in self.training_data.chunks(self.mini_batch_size) {
-            self.update_mini_batch(mini_batch);
-        }
+//         None
+//     }
+// }
 
-        None
-    }
-}
+// impl<R: Rng, U> Optimizer for SGD<R, U> {
+//     fn run<T, const N: usize>(&mut self, mut training_data: [T; N], test_data: Option<DVector<T>>) {
+//         let epochs = 5;
+//         let mini_batch_size = 10;
+//         let n_train = training_data.len();
+//         // let n =
 
-impl<R: Rng, U> Optimizer for SGD<R, U> {
-    fn run<T, const N: usize>(&mut self, mut training_data: [T; N], test_data: Option<DVector<T>>) {
-        let epochs = 5;
-        let mini_batch_size = 10;
-        let n_train = training_data.len();
-        // let n =
+//         for j in 0..epochs {
+//             println!("Epoch {}: Done", j);
+//         }
+//     }
+// }
 
-        for j in 0..epochs {
-            println!("Epoch {}: Done", j);
-        }
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use rand::thread_rng;
+//     use rust_decimal_macros::dec;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::thread_rng;
-    use rust_decimal_macros::dec;
+//     #[test]
+//     fn test_add() {
+//         let y_true = DVector::from_vec(vec![dec!(0.5), dec!(0.4)]);
+//         let y_pred = DVector::from_vec(vec![dec!(0.6), dec!(0.4)]);
 
-    #[test]
-    fn test_add() {
-        let y_true = DVector::from_vec(vec![dec!(0.5), dec!(0.4)]);
-        let y_pred = DVector::from_vec(vec![dec!(0.6), dec!(0.4)]);
+//         let training_data = [0.5, 0.2];
 
-        let training_data = [0.5, 0.2];
+//         let mut optimizer = SGD::new(0.001, thread_rng(), 3);
 
-        let mut optimizer = SGD::new(0.001, thread_rng(), 3);
+//         let foo = optimizer.run(training_data, None);
 
-        let foo = optimizer.run(training_data, None);
+//         dbg!(foo);
 
-        dbg!(foo);
-
-        assert_eq!(true, false);
-    }
-}
+//         assert_eq!(true, false);
+//     }
+// }
