@@ -1,85 +1,135 @@
-use std::fmt::Debug;
-
-use crate::{
-    layers::{Input, Layer, Pipe},
-    losses::{Loss, MeanSquaredError},
-    optimizers::{Optimizer, SGD},
+use std::{
+    fmt::Debug,
+    iter::Sum,
+    ops::{Div, Mul, Sub, SubAssign},
+    process::Output,
 };
 
-pub struct Model<const M: usize, const N: usize, O = SGD, L = MeanSquaredError, T = f64>
+use ndarray::{
+    s, Array1, Array2, Axis, Ix1, Ix2, LinalgScalar,
+    ScalarOperand
+};
+use num_traits::{FromPrimitive};
+
+use crate::{
+    activations::{Activation, Relu},
+    initializers::Initializer,
+    losses::{Loss, MeanSquaredError},
+};
+
+pub struct Model<A = Relu, L = MeanSquaredError, T = f64>
 where
-    O: Optimizer,
+    A: Activation<T>,
     L: Loss<T>,
 {
-    weights: Vec<T>,
-    biases: Vec<T>,
-    layers: Box<dyn Layer<M, N, T>>,
-    optimizer: O,
+    weights: Vec<Array2<T>>,
+    biases: Vec<Array1<T>>,
+    activation: A,
     loss: L,
+    batch_size: usize,
+    learning_rate: T,
 }
 
-impl<const M: usize, O, L, T> Model<M, M, O, L, T>
+impl<A, L, T> Model<A, L, T>
 where
-    O: Optimizer + Default,
+    A: Activation<T> + Default,
     L: Loss<T> + Default,
     T: Copy + 'static,
 {
-    pub fn new() -> Self {
+    pub fn new(learning_rate: T) -> Self {
         Self {
             weights: vec![],
             biases: vec![],
-            layers: Box::new(Input::new()),
-            optimizer: O::default(),
+            activation: A::default(),
             loss: L::default(),
+            batch_size: 32,
+            learning_rate,
         }
     }
 }
 
-impl<const M: usize, const N: usize, O, L, T> Model<M, N, O, L, T>
+impl<A, L, T> Model<A, L, T>
 where
-    O: Optimizer,
+    A: Activation<T>,
     L: Loss<T>,
-    T: 'static + Debug,
+    T: Debug,
 {
-    /// Appends a layer and returns the new shaped model.
-    ///
-    /// ```
-    /// use robit::{Model, layers::Dense};
-    ///
-    /// let model: Model<2, 4> = Model::new()
-    ///     .add_layer(Dense::<2, 3>::new())
-    ///     .add_layer(Dense::<3, 4>::new());
-    /// ```
-    pub fn add_layer<const U: usize, V: Layer<N, U, T> + 'static>(
-        mut self,
-        mut layer: V,
-    ) -> Model<M, U, O, L, T> {
-        self.weights.append(&mut layer.gen_weights());
-        self.biases.append(&mut layer.gen_biases());
+    pub fn add_layer<I: Initializer<T>>(&mut self, shape: (usize, usize), mut init: I) {
+        self.weights.push(init.gen(shape));
+        self.biases.push(init.gen(shape.1));
+    }
+}
 
-        Model {
-            weights: self.weights,
-            biases: self.biases,
-            layers: Box::new(Pipe::new(self.layers.into(), Box::new(layer))),
-            optimizer: self.optimizer,
-            loss: self.loss,
+impl<A, T, L> Model<A, L, T>
+where
+    A: Activation<T>,
+    L: Loss<T>,
+    T: LinalgScalar + PartialOrd + FromPrimitive + ScalarOperand + Mul<T> + Debug + SubAssign<T>,
+{
+    pub fn predict(&self, input: &Array2<T>) -> Array2<T> {
+        let mut a = self
+            .activation
+            .call(&(input.dot(&self.weights[0]) + &self.biases[0]));
+
+        for (w, b) in self.weights[1..].iter().zip(self.biases[1..].iter()) {
+            a = self.activation.call(&(a.dot(w) + b));
+        }
+
+        a
+    }
+
+    pub fn fit(&mut self, X: &Array2<T>, Y: &Array2<T>) {
+        let n_samples = X.shape()[0];
+        let n_features = X.shape()[1];
+        
+        for i in (0..n_samples).step_by(self.batch_size) {
+            if (i + self.batch_size) >= n_samples {
+                continue;
+            }
+
+            let x_batch = X.slice(s![i..i + self.batch_size, ..]);
+            let y_batch = Y.slice(s![i..i + self.batch_size, ..]);
+            let y_pred = self.predict(&x_batch.to_owned());
+            let error = self.loss.get(&y_batch.to_owned(), &y_pred);
+
+            self.backpropagate(x_batch.to_owned(), error)
+
+            // let y_pred = self.predict(x);
+            // let error = y_pred - &y_batch;
+
+            // self.backpropagate(&x, &error, 0.005);
         }
     }
 
-    pub fn predict(&self, input: &[T; M]) -> [T; N] {
-        self.layers.predict(&self.weights, &self.biases, &input)
-    }
+    fn backpropagate(&mut self, X: Array2<T>, error: Array1<T>) {
+        let mut activations = vec![X];
+        let mut zs = vec![];
 
-    pub fn train(&mut self, training_data: Vec<([T; M], [T; N])>) {
-        for epoch in 0..5 {
+        // forward pass
+        for i in 0..self.weights.len() {
+            let z = activations[i].dot(&self.weights[i]) + &self.biases[i];
+            activations.push(self.activation.call(&z));
+            zs.push(z);
+        }
 
-            // self.optimizer.train(weights, training_data);
+        // println!("{:?}", error.sum());
+        // println!("{:?}", error);
 
-            // let biases = self.layers.biases_mut();
+        // backward pass
+        let mut delta = error * self.activation.call_deriv(&zs[zs.len() - 1]);
 
-            // println!("{:?}", weights);
+        for i in (0..self.weights.len()).rev() {
+            let weights = self.weights[i].clone();
 
-            // self.optimizer.train(training_data);
+            let delta_bias = delta.mean_axis(Axis(0)).unwrap();
+            let delta_weight = activations[i].t().dot(&delta);
+
+            self.weights[i] -= &(delta_weight * self.learning_rate);
+            self.biases[i] -= &(delta_bias * self.learning_rate);
+
+            if i != 0 {
+                delta = delta.dot(&weights.t()) * self.activation.call_deriv(&zs[i - 1]);
+            }
         }
     }
 }
@@ -87,16 +137,5 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::layers::Dense;
-
-    use super::*;
-
-    #[test]
-    fn train_model() {
-        let mut model: Model<1, 2> = Model::new().add_layer(Dense::<1, 2>::new());
-
-        let training_data = vec![([0.0; 1], [0.0; 2]), ([1.0; 1], [1.0; 2])];
-
-        model.train(training_data);
-    }
+    // todo ...
 }

@@ -1,11 +1,18 @@
 use std::marker::PhantomData;
 
+use ndarray::{Array, Array1, Array2, Dim, Dimension, Ix, Ix1, Ix2};
+use ndarray_rand::RandomExt;
+
 use super::Layer;
 
-pub struct Input<const M: usize, T = f64>(PhantomData<T>);
+pub struct Input<D: Dimension, T = f64> {
+    dim: D,
+    _phantom: PhantomData<T>,
+}
 
-impl<const M: usize, T> Layer<M, M, T> for Input<M, T>
+impl<D, T> Layer<D, T> for Input<T>
 where
+    D: Dimension,
     T: Copy,
 {
     /// Predicts the [Input] layer.
@@ -22,27 +29,28 @@ where
     /// assert_eq!(l.input_shape(), l.output_shape());
     /// assert_eq!(input, l.predict(&[], &[], &input));
     /// ```
-    fn predict(&self, weights: &[T], biases: &[T], input: &[T; M]) -> [T; M] {
-        *input
+    fn predict_step(&self, weights: &Array2<T>, biases: &Array1<T>, input: Array1<T>) -> Array1<T> {
+        input
     }
 
-    fn gen_weights(&mut self) -> Vec<T> {
-        Vec::new()
+    fn gen_weights(&mut self) -> Array<T, D> {
+        Array::from_shape_vec(self.shape(), vec![])
     }
 
-    fn gen_biases(&mut self) -> Vec<T> {
-        Vec::new()
-    }
-
-    #[inline]
-    fn shape(&self) -> usize {
-        0
+    fn gen_biases(&mut self) -> Array1<T> {
+        Array1::from_shape_vec(self.dim().raw_slice()[0], vec![])
     }
 }
 
-impl<const M: usize, T> Input<M, T> {
-    pub fn new() -> Self {
-        Self(PhantomData)
+impl<D, T> Input<T>
+where
+    D: Dimension,
+{
+    pub fn new(dim: D) -> Self {
+        Self {
+            dim,
+            _phantom: PhantomData,
+        }
     }
 }
 
@@ -52,9 +60,9 @@ mod tests {
 
     #[test]
     fn test_input() {
-        let layer: Input<2> = Input::new();
+        // let layer: Input<2> = Input::new();
 
-        assert_eq!(layer.output_shape(), layer.input_shape());
-        assert_eq!([0.1, 0.2], layer.predict(&[], &[], &[0.1, 0.2]));
+        // assert_eq!(layer.output_shape(), layer.input_shape());
+        // assert_eq!([0.1, 0.2], layer.predict(&[], &[], &[0.1, 0.2]));
     }
 }

@@ -5,6 +5,8 @@ use std::{
     ops::{Add, Mul},
 };
 
+use ndarray::{Array1, Array2, Ix2, Dimension, Array};
+
 use crate::{
     activations::{Activation, Relu},
     initializers::{Initializer, Zeros},
@@ -31,10 +33,10 @@ use super::Layer;
 ///
 /// let layer: Dense<2, 4, Sigmoid> = Dense::new();
 /// ```
-pub struct Dense<const M: usize, const N: usize, A = Relu, I = Zeros, J = Zeros, T = f64>
+pub struct Dense<A = Relu, I = Zeros, J = Zeros, T = f64>
 where
-    I: Initializer<{ M * N }, T>,
-    J: Initializer<{ M * N }, T>,
+    I: Initializer<T>,
+    J: Initializer<T>,
     A: Activation<T>,
 {
     weight_initializer: I,
@@ -43,10 +45,10 @@ where
     _phantom: PhantomData<T>,
 }
 
-impl<const M: usize, const N: usize, A, I, J, T> Dense<M, N, A, I, J, T>
+impl<const M: usize, const N: usize, A, I, J, T> Dense<A, I, J, T>
 where
-    I: Initializer<{ M * N }, T> + Default,
-    J: Initializer<{ M * N }, T> + Default,
+    I: Initializer<T> + Default,
+    J: Initializer<T> + Default,
     A: Activation<T> + Default,
 {
     pub fn new() -> Self {
@@ -59,10 +61,10 @@ where
     }
 }
 
-impl<const M: usize, const N: usize, A, I, J, T> Dense<M, N, A, I, J, T>
+impl<const M: usize, const N: usize, A, I, J, T> Dense<A, I, J, T>
 where
-    I: Initializer<{ M * N }, T>,
-    J: Initializer<{ M * N }, T>,
+    I: Initializer<T>,
+    J: Initializer<T>,
     A: Activation<T> + Default,
 {
     pub fn with_initializers(weight_initializer: I, bias_initializer: J) -> Self {
@@ -75,10 +77,10 @@ where
     }
 }
 
-impl<const M: usize, const N: usize, A, I, J, T> Dense<M, N, A, I, J, T>
+impl<const M: usize, const N: usize, A, I, J, T> Dense<A, I, J, T>
 where
-    I: Initializer<{ M * N }, T> + Default,
-    J: Initializer<{ M * N }, T> + Default,
+    I: Initializer<T> + Default,
+    J: Initializer<T> + Default,
     A: Activation<T>,
 {
     /// Returns an instance that uses the given [Activation] function.
@@ -102,54 +104,24 @@ where
     }
 }
 
-impl<const M: usize, const N: usize, A, I, J, T> Dense<M, N, A, I, J, T>
+impl<D, A, I, J, T> Layer<D, T> for Dense<A, I, J, T>
 where
-    [(); M * N]:,
-    I: Initializer<{ M * N }, T>,
-    J: Initializer<{ M * N }, T>,
-    A: Activation<T>,
-{
-}
-
-impl<const M: usize, const N: usize, A, I, J, T> Layer<M, N, T> for Dense<M, N, A, I, J, T>
-where
-    [(); M * N]:,
-    I: Initializer<{ M * N }, T>,
-    J: Initializer<{ M * N }, T>,
+    D: Dimension,
+    I: Initializer<T>,
+    J: Initializer<T>,
     T: Add<Output = T> + Mul<Output = T> + Sum + Debug + Copy,
     A: Activation<T>,
 {
-    fn predict(&self, weights: &[T], biases: &[T], input: &[T; M]) -> [T; N] {
-        weights
-            .into_iter()
-            .copied()
-            .zip(biases.into_iter().copied())
-            .collect::<Vec<(T, T)>>()
-            .chunks(M)
-            .map(|weights| {
-                self.activation.call(
-                    weights
-                        .iter()
-                        .zip(input)
-                        .map(|((weight, bias), a)| *weight * *a + *bias)
-                        .sum::<T>(),
-                )
-            })
-            .collect::<Vec<T>>()
-            .try_into()
-            .unwrap()
+    fn predict_step(&self, w: &Array<T, D>, b: &Array1<T>, a: Array1<T>) -> Array1<T> {
+        self.activation.call(a.dot(w) + b)
     }
 
-    fn gen_weights(&mut self) -> Vec<T> {
-        let weights: [T; M * N] = self.weight_initializer.gen();
-
-        weights.into()
+    fn gen_weights(&mut self) -> Array<T, D> {
+        self.weight_initializer.gen(self.shape())
     }
 
-    fn gen_biases(&mut self) -> Vec<T> {
-        let biases: [T; M * N] = self.bias_initializer.gen();
-
-        biases.into()
+    fn gen_biases(&mut self) -> Array1<T> {
+        self.bias_initializer.gen(self.shape())
     }
 }
 

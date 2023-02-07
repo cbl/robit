@@ -2,10 +2,18 @@ mod sgd;
 
 pub use sgd::SGD;
 
-use crate::Model;
+use crate::{layers::Layer, losses::Loss, Model};
 
-pub trait Optimizer {
-    fn train<const M: usize, const N: usize, T>(&self, training_data: Vec<([T; M], [T; N])>);
+pub trait Optimizer<T = f64> {
+    fn minimize<const M: usize, const N: usize, L>(
+        &self,
+        weights: &mut Vec<T>,
+        biases: &mut Vec<T>,
+        training_data: &Vec<([T; M], [T; N])>,
+        layer: &dyn Layer<M, N, T>,
+        loss: &L,
+    ) where
+        L: Loss<T>;
 }
 
 // pub struct SGD<R, T> {

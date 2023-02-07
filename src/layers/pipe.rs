@@ -1,3 +1,7 @@
+use std::fmt::Debug;
+
+use rand_distr::WeightedError;
+
 use super::Layer;
 
 pub struct Pipe<const M: usize, const N: usize, const O: usize, T = f64> {
@@ -20,7 +24,7 @@ impl<const M: usize, const N: usize, const O: usize, T> Pipe<M, N, O, T> {
     /// let mut connected = Pipe::new(Box::new(layer_a), Box::new(layer_b));
     ///
     /// assert_eq!(
-    ///     layer_a_shape + layer_b_shape, 
+    ///     layer_a_shape + layer_b_shape,
     ///     connected.shape()
     /// );
     /// ```
@@ -29,12 +33,16 @@ impl<const M: usize, const N: usize, const O: usize, T> Pipe<M, N, O, T> {
     }
 }
 
-impl<const M: usize, const N: usize, const O: usize, T> Layer<M, O, T> for Pipe<M, N, O, T> {
+impl<const M: usize, const N: usize, const O: usize, T: Debug> Layer<M, O, T> for Pipe<M, N, O, T> {
     fn predict(&self, weights: &[T], biases: &[T], input: &[T; M]) -> [T; O] {
+        let n_parent = self.parent.shape();
+
         self.child.predict(
-            &weights[N..],
-            &biases[N..],
-            &self.parent.predict(&weights[..N], &biases[..N], input),
+            &weights[n_parent..],
+            &biases[n_parent..],
+            &self
+                .parent
+                .predict(&weights[..n_parent], &biases[..n_parent], input),
         )
     }
 

@@ -1,5 +1,7 @@
 use std::{marker::PhantomData, ops::Range};
 
+use ndarray::{Array, Dimension, ShapeBuilder, StrideShape};
+use ndarray_rand::RandomExt;
 use num_traits::Float;
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 use rand_distr::{
@@ -33,35 +35,33 @@ const DEFAULT_UNIFORM_HIGH: f64 = 0.05;
 ///
 /// let values: [_; 2] = initializer.gen();
 /// ```
-pub struct RandomDistr<D, T = f64, R = ThreadRng>
+pub struct RandomDistr<D, T = f64>
 where
     D: Distribution<T>,
-    R: Rng,
 {
     /// Distribution creates random instances of `T`.
     dist: D,
 
-    /// The random generator.
-    rng: R,
-
     _phantom: PhantomData<T>,
 }
 
-impl<const M: usize, D, T, R> Initializer<M, T> for RandomDistr<D, T, R>
+impl<Distr, T> Initializer<T> for RandomDistr<Distr, T>
 where
-    D: Distribution<T>,
-    R: Rng,
+    Distr: Distribution<T> + Copy,
 {
-    fn gen(&mut self) -> [T; M] {
-        [(); M].map(|_| self.dist.sample(&mut self.rng))
+    fn gen<S, Dim>(&self, shape: S) -> Array<T, Dim>
+    where
+        Dim: Dimension,
+        S: ShapeBuilder<Dim = Dim>,
+    {
+        Array::random::<S, Distr>(shape, self.dist)
     }
 }
 
-impl<T, R> RandomDistr<Normal<T>, T, R>
+impl<T> RandomDistr<Normal<T>, T>
 where
     T: Float,
     StandardNormal: Distribution<T>,
-    R: Rng,
 {
     /// Returns the instance of the [Normal] distribution.
     pub fn dist(&self) -> Normal<T> {
@@ -69,16 +69,15 @@ where
     }
 }
 
-impl Default for RandomDistr<Normal<f64>, f64, ThreadRng> {
+impl Default for RandomDistr<Normal<f64>, f64> {
     fn default() -> Self {
         Self::normal()
     }
 }
 
-impl<D, T, R> RandomDistr<D, T, R>
+impl<D, T> RandomDistr<D, T>
 where
     D: Distribution<T>,
-    R: Rng,
 {
     /// Initializer that generates values with the given distribution and random
     /// generator.
@@ -89,22 +88,20 @@ where
     /// use robit::initializers::{RandomDistr, Initializer};
     /// use rand_distr::{Uniform, Distribution};
     ///
-    /// let rng = rand::thread_rng();
     /// let dist = Uniform::new(-0.05, 0.05);
-    /// let mut initializer = RandomDistr::new(dist, rng);
+    /// let mut initializer = RandomDistr::new(dist);
     ///
     /// let values: [_; 2] = initializer.gen();
     /// ```
-    pub fn new(dist: D, rng: R) -> Self {
+    pub fn new(dist: D) -> Self {
         Self {
             dist,
-            rng,
             _phantom: PhantomData,
         }
     }
 }
 
-impl RandomDistr<Normal<f64>, f64, ThreadRng> {
+impl RandomDistr<Normal<f64>, f64> {
     /// Initializer that generates values with a normal distribution the and
     /// default values:
     ///
@@ -126,13 +123,12 @@ impl RandomDistr<Normal<f64>, f64, ThreadRng> {
     pub fn normal() -> Self {
         Self {
             dist: Normal::new(DEFAULT_NORMAL_MEAN, DEFAULT_NORMAL_STD_DEV).unwrap(),
-            rng: thread_rng(),
             _phantom: PhantomData,
         }
     }
 }
 
-impl<T> RandomDistr<Normal<T>, T, ThreadRng>
+impl<T> RandomDistr<Normal<T>, T>
 where
     T: Float,
     StandardNormal: Distribution<T>,
@@ -154,13 +150,12 @@ where
     pub fn normal_with(mean: T, std_dev: T) -> Result<Self, NormalError> {
         Ok(Self {
             dist: Normal::new(mean, std_dev)?,
-            rng: thread_rng(),
             _phantom: PhantomData,
         })
     }
 }
 
-impl RandomDistr<Uniform<f64>, f64, ThreadRng> {
+impl RandomDistr<Uniform<f64>, f64> {
     /// Initializer that generates values with a uniform distribution the and
     /// default values:
     ///
@@ -179,13 +174,12 @@ impl RandomDistr<Uniform<f64>, f64, ThreadRng> {
     pub fn uniform() -> Self {
         Self {
             dist: Uniform::new(DEFAULT_UNIFORM_LOW, DEFAULT_UNIFORM_HIGH),
-            rng: thread_rng(),
             _phantom: PhantomData,
         }
     }
 }
 
-impl<T> RandomDistr<Uniform<T>, T, ThreadRng>
+impl<T> RandomDistr<Uniform<T>, T>
 where
     T: SampleUniform,
 {
@@ -203,7 +197,6 @@ where
     pub fn uniform_with(low: T, high: T) -> Self {
         Self {
             dist: Uniform::new(low, high),
-            rng: thread_rng(),
             _phantom: PhantomData,
         }
     }
